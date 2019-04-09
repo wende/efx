@@ -1,0 +1,3 @@
+%{
+  "meck": {:git, "https://github.com/eproxus/meck.git", "aefdac8a708633c842fcff90191d1cb14198cc9e", []},
+}
