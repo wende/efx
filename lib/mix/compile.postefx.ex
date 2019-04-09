@@ -14,9 +14,7 @@ defmodule Mix.Tasks.Compile.PostEfx do
     end
     |> List.flatten()
     |> Enum.each(fn path ->
-      IO.puts(path)
       original_path = String.replace_trailing(path, ".efxtmp", "")
-      IO.puts(original_path)
       File.rm!(original_path)
       File.rename(path, original_path)
     end)

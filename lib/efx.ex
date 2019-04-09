@@ -1,50 +1,74 @@
 defmodule Efx do
-  @moduledoc """
-  Documentation for Efx.
-  """
+  defstruct captured_effects: %{}
 
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Efx.hello()
-      :world
-
-  """
-  def hello do
-    :worldss
-  end
+  @effects %{
+    {IO, :puts, 1} => [STD.WRITE]
+  }
 
   def replace_effects(ast) do
-    Macro.prewalk(ast, fn ast ->
-      replace_call(ast, {IO, :puts, 1})
+    Macro.prewalk(ast, fn
+      ast = {{:., _, [_module, _function]}, _, _args} ->
+        replace_call(ast)
+
+      ast ->
+        ast
     end)
   end
 
-  def replace_call(ast = {{:., _, [module, function]}, _, args}, {mod, fun, arity}) do
-    IO.puts("replace call")
-    IO.inspect(ast)
+  def replace_call(ast = {{:., _, [mod_ast, fun]}, _, args}) do
+    mod = replace_module(mod_ast)
 
-    if fun == function && is_module(module, mod) && length(args) == arity do
-      quote do
-        Efx.eff(unquote(mod), unquote(fun), unquote(args))
-      end
-    else
-      ast
+    case Map.get(@effects, {mod, fun, length(args)}) |> IO.inspect() do
+      nil ->
+        ast
+
+      [_ | _] ->
+        quote do
+          Efx.eff(unquote(mod), unquote(fun), unquote(args))
+        end
     end
   end
 
-  def replace_call(ast, _) do
+  def replace_call(ast) do
     ast
   end
 
-  def is_module({:__aliases__, _, path}, mod) do
-    Module.concat(path) == mod |> IO.inspect()
+  def replace_module({:__aliases__, _, path}) do
+    Module.concat(path)
   end
 
-  def eff(mod, fun, args) do
+  def eff(effect, {mod, fun, args}) do
     IO.puts("Calling #{mod} #{fun} #{inspect(args)}")
-    apply(mod, fun, args)
+
+    efx =
+      Efx
+      |> Process.get(%Efx{})
+
+    efx
+    |> Map.get(:captured_effects)
+    |> Map.get(effect)
+    |> case do
+      nil ->
+        apply(mod, fun, args)
+
+      [pid | rest] ->
+        IO.puts("Capturing #{mod} #{fun} #{inspect(args)}")
+
+        if Process.alive?(pid) do
+          send(pid, {Kernel.self(), effect, args})
+        else
+          Process.put(:captured_effects, %Efx{
+            efx
+            | captured_effects: %{efx.captured_effects | effect: rest}
+          })
+
+          eff(effect, {mod, fun, args})
+        end
+    end
+  end
+
+  defmacro handle(code, do: ast) do
+    quote do
+    end
   end
 end
