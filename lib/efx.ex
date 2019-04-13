@@ -1,15 +1,15 @@
 defmodule Efx do
-  defstruct captured_effects: %{}, continuations: %{}
+  defstruct handlers: %{}, continuations: %{}
 
   def register_effect(mod, fun, arity) do
     start()
-    :ets.insert(__MODULE__, {mod, fun, arity})
+    :ets.insert(Efx, {mod, fun, arity})
   end
 
   def start() do
-    case :ets.info(__MODULE__) do
+    case :ets.info(Efx) do
       :undefined ->
-        :ets.new(__MODULE__, [:named_table])
+        :ets.new(Efx, [:named_table])
         :ok
 
       _ ->
@@ -54,12 +54,12 @@ defmodule Efx do
   end
 
   def eff(mod, fun, args) do
-    IO.puts("Calling #{mod} #{fun} #{inspect(args)} at #{__MODULE__}")
+    IO.puts("Calling #{mod} #{fun} #{inspect(args)} at #{Efx}")
 
-    efx = Process.get(__MODULE__, %Efx{})
+    efx = Efx.get()
 
     efx
-    |> Map.get(:captured_effects)
+    |> Map.get(:handlers)
     |> Map.get({mod, fun, length(args)})
     |> case do
       nil ->
@@ -68,12 +68,10 @@ defmodule Efx do
 
       [{ref, handler} | rest] ->
         IO.inspect({ref, handler})
-        Process.put(__MODULE__, put_in(efx.captured_effects[{mod, fun, args}], rest))
+        Process.put(Efx, put_in(efx.handlers[{mod, fun, args}], rest))
 
         handler.(args, fn result ->
-          efx = Process.get(__MODULE__, %Efx{})
-          new_efx = put_in(efx.continuations[ref], result)
-          Process.put(__MODULE__, new_efx)
+          Efx.put_continuation(ref, result)
         end)
     end
   end
@@ -86,25 +84,15 @@ defmodule Efx do
         quote do
           ref = Kernel.make_ref()
 
-          h = fn [unquote_splicing(args)], unquote(k) ->
+          fn [unquote_splicing(args)], unquote(k) ->
             unquote(body)
 
-            case Process.get(unquote(__MODULE__), %Efx{}).continuations[ref] do
+            case Efx.get_continuation(ref) do
               nil -> throw(:efx_no_cont)
               result -> result
             end
           end
-
-          efx = Process.get(unquote(__MODULE__), %Efx{})
-
-          new_efx =
-            put_in(
-              efx.captured_effects[{unquote(mod), unquote(fun), unquote(length(args))}],
-              [{ref, h}]
-            )
-
-          IO.puts("Putting #{inspect(new_efx)} to #{unquote(__MODULE__)}")
-          Process.put(unquote(__MODULE__), new_efx)
+          |> Efx.put_handler({unquote(mod), unquote(fun), unquote(length(args))}, ref)
         end
       end
 
@@ -112,6 +100,33 @@ defmodule Efx do
       unquote(handlers)
       unquote(code)
     end
+  end
+
+  def put_handler(handler, modfunarity, ref) do
+    Efx.get()
+    |> update_in(
+      [Access.key(:handlers), modfunarity],
+      fn handlers -> [{ref, handler} | handlers] end
+    )
+    |> Efx.put()
+  end
+
+  def put_continuation(ref, result) do
+    efx = Process.get(Efx, %Efx{})
+    new_efx = put_in(efx.continuations[ref], result)
+    Process.put(Efx, new_efx)
+  end
+
+  def get_continuation(ref) do
+    Efx.get().continuations[ref]
+  end
+
+  def get() do
+    Process.get(unquote(Efx), %Efx{})
+  end
+
+  def put(efx) do
+    Process.put(unquote(Efx), efx)
   end
 
   defp tuplify_call({{:., _, [mod, fun]}, _, args}, caller) do
