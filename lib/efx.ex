@@ -1,8 +1,24 @@
 defmodule Efx do
-  defstruct captured_effects: %{}
+  defstruct captured_effects: %{}, continuations: %{}
+
+  def register_effect(mod, fun, arity) do
+    start()
+    :ets.insert(__MODULE__, {mod, fun, arity})
+  end
+
+  def start() do
+    case :ets.info(__MODULE__) do
+      :undefined ->
+        :ets.new(__MODULE__, [:named_table])
+        :ok
+
+      _ ->
+        :ok
+    end
+  end
 
   @effects %{
-    {IO, :puts, 1} => [STD.WRITE]
+    {File, :read, 1} => [STD.WRITE]
   }
 
   def replace_effects(ast) do
@@ -37,38 +53,72 @@ defmodule Efx do
     Module.concat(path)
   end
 
-  def eff(effect, {mod, fun, args}) do
-    IO.puts("Calling #{mod} #{fun} #{inspect(args)}")
+  def eff(mod, fun, args) do
+    IO.puts("Calling #{mod} #{fun} #{inspect(args)} at #{__MODULE__}")
 
-    efx =
-      Efx
-      |> Process.get(%Efx{})
+    efx = Process.get(__MODULE__, %Efx{})
 
     efx
     |> Map.get(:captured_effects)
-    |> Map.get(effect)
+    |> Map.get({mod, fun, length(args)})
     |> case do
       nil ->
+        IO.puts("Not found")
         apply(mod, fun, args)
 
-      [pid | rest] ->
-        IO.puts("Capturing #{mod} #{fun} #{inspect(args)}")
+      [{ref, handler} | rest] ->
+        IO.inspect({ref, handler})
+        Process.put(__MODULE__, put_in(efx.captured_effects[{mod, fun, args}], rest))
 
-        if Process.alive?(pid) do
-          send(pid, {Kernel.self(), effect, args})
-        else
-          Process.put(:captured_effects, %Efx{
-            efx
-            | captured_effects: %{efx.captured_effects | effect: rest}
-          })
-
-          eff(effect, {mod, fun, args})
-        end
+        handler.(args, fn result ->
+          efx = Process.get(__MODULE__, %Efx{})
+          new_efx = put_in(efx.continuations[ref], result)
+          Process.put(__MODULE__, new_efx)
+        end)
     end
   end
 
-  defmacro handle(code, do: ast) do
+  defmacro handle(do: code, catch: cases) do
+    handlers =
+      for {:->, _, [[left, k], body]} <- cases do
+        {mod, fun, args} = tuplify_call(left, __CALLER__)
+
+        quote do
+          ref = Kernel.make_ref()
+
+          h = fn [unquote_splicing(args)], unquote(k) ->
+            unquote(body)
+
+            case Process.get(unquote(__MODULE__), %Efx{}).continuations[ref] do
+              nil -> throw(:efx_no_cont)
+              result -> result
+            end
+          end
+
+          efx = Process.get(unquote(__MODULE__), %Efx{})
+
+          new_efx =
+            put_in(
+              efx.captured_effects[{unquote(mod), unquote(fun), unquote(length(args))}],
+              [{ref, h}]
+            )
+
+          IO.puts("Putting #{inspect(new_efx)} to #{unquote(__MODULE__)}")
+          Process.put(unquote(__MODULE__), new_efx)
+        end
+      end
+
     quote do
+      unquote(handlers)
+      unquote(code)
     end
+  end
+
+  defp tuplify_call({{:., _, [mod, fun]}, _, args}, caller) do
+    {Macro.expand(mod, caller), fun, args}
+  end
+
+  defp tuplify_call({:{}, _, [mod, fun, args]}, _) do
+    {mod, fun, args}
   end
 end

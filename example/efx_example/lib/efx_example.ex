@@ -1,11 +1,5 @@
 defmodule EfxExample do
-  def hello() do
-    :world
-  end
-end
-
-defmodule EfxExample2 do
-  def hello() do
-    IO.puts("A")
+  def read_file() do
+    File.read("Wende")
   end
 end

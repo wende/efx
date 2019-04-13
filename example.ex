@@ -31,7 +31,8 @@ defmodule Example do
   end
 
   # Catch effects
-  @ef my_fun2({IO.{write}})
+  @eff my_fun2({IO.{write}})
+  @spec my_fun2()
   def my_fun2() do
     pure do
       rewrite_random_line("somefile.txt")
@@ -46,6 +47,27 @@ defmodule Example do
 
       Random.int(from, to) ->
         10
+    end
+  end
+
+  # Continuations
+  @eff my_fun3({IO.{write}})
+  @spec my_fun3()
+  def my_fun3() do
+    pure do
+      rewrite_random_line("somefile.txt")
+    catch
+      File.read(name), k ->
+        IO.inspect("Reading file #{name}")
+        "Mocked file"
+
+      File.write(name, _content), k ->
+        IO.inspect("Writing file #{name}")
+        :ok
+
+      IO.puts(sth), k ->
+        k.()
+        IO.puts(sth)
     end
   end
 end
