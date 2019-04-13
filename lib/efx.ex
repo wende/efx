@@ -1,15 +1,24 @@
 defmodule Efx do
   defstruct handlers: %{}, continuations: %{}
 
+  @base_effects [
+    {File, :read, 1}
+  ]
+
+  @spec register_effect(any(), any(), any()) :: :ok
   def register_effect(mod, fun, arity) do
     start()
-    :ets.insert(Efx, {mod, fun, arity})
+    Agent.update(Efx, fn state -> Map.put(state, {mod, fun, arity}, true) end)
   end
 
   def start() do
     case :ets.info(Efx) do
       :undefined ->
-        :ets.new(Efx, [:named_table])
+        Agent.start(
+          fn -> @base_effects |> Enum.map(fn a -> {a, true} end) |> Enum.into(%{}) end,
+          name: Efx
+        )
+
         :ok
 
       _ ->
@@ -17,11 +26,9 @@ defmodule Efx do
     end
   end
 
-  @effects %{
-    {File, :read, 1} => [STD.WRITE]
-  }
-
   def replace_effects(ast) do
+    start()
+
     Macro.prewalk(ast, fn
       ast = {{:., _, [_module, _function]}, _, _args} ->
         replace_call(ast)
@@ -34,11 +41,11 @@ defmodule Efx do
   def replace_call(ast = {{:., _, [mod_ast, fun]}, _, args}) do
     mod = replace_module(mod_ast)
 
-    case Map.get(@effects, {mod, fun, length(args)}) |> IO.inspect() do
+    case Agent.get(Efx, fn state -> state[{mod, fun, length(args)}] end) do
       nil ->
         ast
 
-      [_ | _] ->
+      true ->
         quote do
           Efx.eff(unquote(mod), unquote(fun), unquote(args))
         end

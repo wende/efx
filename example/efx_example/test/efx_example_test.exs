@@ -4,11 +4,6 @@ defmodule EfxExampleTest do
 
   import Efx
 
-  setup do
-    Efx.register_effect(File, :read, 1)
-    :ok
-  end
-
   test "Captures simple effect" do
     result =
       handle do
