@@ -1,0 +1,13 @@
+defmodule(EfxExample) do
+  def(read_file()) do
+    Efx.eff(File, :read, ["Wende"])
+  end
+  def(read_specific_file(file)) do
+    Efx.eff(File, :read, [file])
+  end
+  @effx(print())
+  @spec(print())
+  def(print(sth)) do
+    IO.puts(sth)
+  end
+end

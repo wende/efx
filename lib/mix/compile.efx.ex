@@ -22,6 +22,11 @@ defmodule Mix.Tasks.Compile.Efx do
     :ok
   end
 
+  def clean() do
+    IO.puts("CLEANING")
+  end
+
+  @spec process_files(any()) :: [any()]
   def process_files(files) do
     Enum.map(files, &each_file/1)
   end

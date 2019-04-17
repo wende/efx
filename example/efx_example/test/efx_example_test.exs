@@ -3,6 +3,7 @@ defmodule EfxExampleTest do
   doctest EfxExample
 
   import Efx
+  import ExUnit.CaptureIO
 
   test "Captures simple effect" do
     result =
@@ -39,11 +40,39 @@ defmodule EfxExampleTest do
     result =
       handle do
         EfxExample.read_specific_file("Foo")
+        |> IO.inspect()
       catch
         File.read(eff), k ->
           k.(eff)
+          10
       end
 
     assert result == "Foo"
+  end
+
+  test "No continuations" do
+    result =
+      handle do
+        EfxExample.read_specific_file("Foo")
+      catch
+        File.read(eff), k ->
+          10
+      end
+
+    assert result == "Foo"
+  end
+
+  test "Reverse effects using continuations" do
+    assert capture_io(fn ->
+             handle do
+               EfxExample.print("1")
+               EfxExample.print("2")
+               EfxExample.print("3")
+             catch
+               IO.puts(text), k ->
+                 k.(:ok)
+                 IO.puts(text)
+             end
+           end) =~ "3\n2\n1\n"
   end
 end

@@ -7,7 +7,7 @@ defmodule EfxExample.MixProject do
       version: "0.1.0",
       elixir: "~> 1.7",
       start_permanent: Mix.env() == :prod,
-      compilers: [:yecc, :leex, :erlang, :efx, :elixir, :post_efx, :xref, :app],
+      compilers: [:yecc, :leex, :erlang, :elixir, :efx, :elixir, :post_efx, :xref, :app],
       deps: deps()
     ]
   end

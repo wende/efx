@@ -1,21 +1,72 @@
 # Efx
+Experimental Elixir language extension adding support for **First class effects**. Otherwise known as **algebraic effects**[1][2]
 
-**TODO: Add description**
-
-## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `efx` to your list of dependencies in `mix.exs`:
+# Marking effects
 
 ```elixir
-def deps do
-  [
-    {:efx, "~> 0.1.0"}
-  ]
+eff print() :: {IO.puts/1}
+def print() do
+  IO.puts "Something"
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/efx](https://hexdocs.pm/efx).
+# Defining own effects
+
+Now this is an effect and can be reasoned about on its own. It also is an alias to itself
+and all the underlying effects. What it means is that used like
+eff fun() :: {Example.print/0}
+Where Example.print() contains effects IO.puts and IO.read
+What is really represents is {Example.print/1, IO.puts/1, IO.read/1}
+And each and everyone of these effects can be captured independently
+
+```elixir
+defeffect Example.print()
+```
+
+# Capturing effects
+Effects can be captured using a dedicated syntax `handle do...catch...end`
+```elixir
+handle do
+  Example.print()
+catch
+  # Here we can replace our call with anything different. Let's forbid our IO.puts
+  # from printing any passwords
+  IO.puts(arg1) ->
+    if arg1 =~ "password" do
+      :ok
+    else
+      IO.puts(arg1)
+    end
+
+  # But lets get rid of all writes whatsoever
+  IO.write(arg) ->
+    :ok
+end
+```
+Said handler *purifies* the body of the selected effect, but also augments it with all effects mentioned in the handler's body. Because we don't know what values the function can take we always assume the most pessimistic eventuality.
+Hence, in this example results of our code block are purified from the `IO.write/1` effect; but not purified of `IO.puts/1` effect (because it can still be emitted under specific circumstances)
+
+# Effect inference
+To maintain a controllable system in which the effects are values derived from the code it's imperative to be able to check correctness of effect annotations. Due to [almost] all of the information available at compile time, it is possible to implement an algorithm similar to Hindley-Milner type inference to determine all of the effects and verify their corresponding annotations. For the sake of simplicity it is referred as `event-checking` in the rest of the documentation.
+
+### Example of a compile-time effect-checking error
+``` elixir
+eff print() :: {} # <- This indicates pure computation
+def print() do
+  IO.puts "Something"
+end
+
+# Efx: Compile error at ./lib/example.ex:1
+# Effect annotation for function Example.print/1 suggest it's a pure function.
+# But the definition says its effects are {IO.puts/1}
+```
+
+
+# Difficulties
+## Inference of functions sent as messages
+Erlang's processes system allows to send an anonymous function as a regular value to the process via `Process.send/2`. This proves impossible to figure out effects of a function at compile time if it receives an effect-full function via message passing.
+
+## Inference of default errors as matching errors and function clause errors
+Errors that are by default possible to be thrown in every place in code cannot be expressed using Efx, because handling them would never clear off the effect completely.
+
 
