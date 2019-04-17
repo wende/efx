@@ -1,4 +1,4 @@
-# Efx
+# Efx - First class side effects for Elixir
 Experimental Elixir language extension adding support for **First class effects**. Otherwise known as **algebraic effects**[1][2]
 
 # Marking effects
@@ -65,7 +65,45 @@ end
 
 # But the definition says its effects are {IO.puts/1}
 ```
+### Example of compile-time effect-checking inference
+```elixir
+def print() do
+  File.read "file"
+  |> IO.puts
+end
 
+eff test() :: {IO.puts/1}
+def test() do
+  print()
+end
+
+# Efx: Compile error at ./lib/example.ex:8
+# Effect annotation for function Example.print/1 suggest it emits
+# {IO.puts/1}
+
+# 7
+# 8  eff test :: {}
+# 9  def test() do
+
+# But the definition says its effects are {IO.puts/1, File.write/1}
+```
+
+# Explicit Effect control
+When you require a part of code to be explicitly effect controlled out of your codebase you can use `effects do...end` construct. Which asserts all of the code is handled by Efx.
+
+### Example
+```elixir
+  effects do
+
+    test "Make sure the code is pure" do
+      # This construct will be effect-checked even though out of main project's source-files
+      IO.puts "A"
+    end
+
+  end
+end
+
+```
 
 # Difficulties
 ## Inference of functions sent as messages

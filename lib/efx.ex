@@ -11,6 +11,7 @@ defmodule Efx do
     Agent.update(Efx, fn state -> Map.put(state, {mod, fun, arity}, true) end)
   end
 
+  @spec start() :: :ok
   def start() do
     case :ets.info(Efx) do
       :undefined ->
@@ -38,6 +39,7 @@ defmodule Efx do
     end)
   end
 
+  @spec replace_call(any()) :: any()
   def replace_call(ast = {{:., _, [mod_ast, fun]}, _, args}) do
     mod = replace_module(mod_ast)
 
@@ -56,10 +58,12 @@ defmodule Efx do
     ast
   end
 
+  @spec replace_module({:__aliases__, any(), [atom() | binary()]}) :: atom()
   def replace_module({:__aliases__, _, path}) do
     Module.concat(path)
   end
 
+  @spec eff(any(), any(), [any()]) :: any()
   def eff(mod, fun, args) do
     IO.puts("Calling #{mod} #{fun} #{inspect(args)} at #{Efx}")
 
