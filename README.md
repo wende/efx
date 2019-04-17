@@ -58,6 +58,11 @@ end
 
 # Efx: Compile error at ./lib/example.ex:1
 # Effect annotation for function Example.print/1 suggest it's a pure function.
+
+# 1  defmodule Example do
+# 2  eff print :: {}
+# 3  def print() do
+
 # But the definition says its effects are {IO.puts/1}
 ```
 
@@ -66,7 +71,8 @@ end
 ## Inference of functions sent as messages
 Erlang's processes system allows to send an anonymous function as a regular value to the process via `Process.send/2`. This proves impossible to figure out effects of a function at compile time if it receives an effect-full function via message passing.
 
-## Inference of default errors as matching errors and function clause errors
+---
+## Inference of default errors such as MatchError and FunctionClauseError
 Errors that are by default possible to be thrown in every place in code cannot be expressed using Efx, because handling them would never clear off the effect completely.
 
 
