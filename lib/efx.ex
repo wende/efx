@@ -93,6 +93,7 @@ defmodule Efx do
 
       handlers ->
         handlers
+        |> Enum.reverse()
         |> Enum.reduce_while(:no_match, fn handler, _ ->
           case handler.(args) do
             {:ok, body} -> {:halt, body}

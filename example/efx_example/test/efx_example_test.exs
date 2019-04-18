@@ -17,23 +17,26 @@ defmodule EfxExampleTest do
     assert result == {:ok, "Content"}
   end
 
-  # TODO: Match arguments on handlers
-  # @tag :skip
   test "Captures simple effect with args" do
     result =
       handle do
         foo = EfxExample.read_specific_file("Wende")
         bar = EfxExample.read_specific_file("Wende2")
-        foo <> bar
+        baz = EfxExample.read_specific_file("Magic")
+
+        foo <> bar <> baz
       catch
         File.read("Wende") ->
           "Foo"
 
         File.read("Wende2") ->
           "Bar"
+
+        File.read(anything) ->
+          "Baz"
       end
 
-    assert result == "FooBar"
+    assert result == "FooBarBaz"
   end
 
   test "Identity effect" do
