@@ -28,7 +28,7 @@ defmodule Efx do
     @manifest_file |> File.rm()
   end
 
-  @base_effects_file "./.efx"
+  @base_effects_file "./.efx.exs"
   def read_base_effects() do
     case File.read(@base_effects_file) do
       {:ok, content} ->
@@ -77,6 +77,8 @@ defmodule Efx do
   def replace_module({:__aliases__, _, path}) do
     Module.concat(path)
   end
+
+  def replace_module(atom_module) when is_atom(atom_module), do: atom_module
 
   @spec eff(any(), any(), [any()]) :: any()
   def eff(mod, fun, args) do

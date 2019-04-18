@@ -3,7 +3,6 @@ defmodule EfxExampleTest do
   doctest EfxExample
 
   import Efx
-  import ExUnit.CaptureIO
 
   test "Captures simple effect" do
     result =
@@ -22,7 +21,7 @@ defmodule EfxExampleTest do
       handle do
         foo = EfxExample.read_specific_file("Wende")
         bar = EfxExample.read_specific_file("Wende2")
-        baz = EfxExample.read_specific_file("Magic")
+        baz = EfxExample.read_specific_file("Baz")
 
         foo <> bar <> baz
       catch
@@ -33,7 +32,7 @@ defmodule EfxExampleTest do
           "Bar"
 
         File.read(anything) ->
-          "Baz"
+          anything
       end
 
     assert result == "FooBarBaz"

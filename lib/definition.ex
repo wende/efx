@@ -6,22 +6,40 @@ defmodule Efx.Definition do
     defstruct functions: %{}
   end
 
-  defstruct modules: %{}, effects: []
+  defstruct modules: %{}
 
   def start(), do: GenServer.start(Module, name: __MODULE__)
 
   def init(_) do
-    case Efx.read_manifest() do
-      {:error, _} ->
-        {:ok, %__MODULE__{}}
-
-      {:ok, effects} ->
-        %__MODULE__{effects: effects}
-    end
+    {:ok, %__MODULE__{}}
   end
 
   def define_effects(module, fun, arity, effects) do
-    # Todo add effects to some dictionary
+    GenServer.cast(__MODULE__, {:define_effects, module, fun, arity, effects})
+  end
+
+  def handle_cast({:define_effects, mod, fun, arity, effects}, _, state) do
+    new_state =
+      case state.modules[mod] do
+        nil ->
+          put_in(state.modules[mod], %{{fun, arity} => effects})
+
+        mod ->
+          case mod[{fun, arity}] do
+            nil ->
+              put_in(state.modules[mod][{fun, arity}], effects)
+
+            definition ->
+              conflict(definition, effects)
+              state
+          end
+      end
+
+    {:noreply, new_state}
+  end
+
+  defp conflict(original, annotation) do
+    # TODO do the conflic
   end
 
   defmacro eff({:::, _, [left, right]}) do
