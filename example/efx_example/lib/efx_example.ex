@@ -1,4 +1,6 @@
 defmodule EfxExample do
+  use Efx
+
   def read_file() do
     File.read("Wende")
   end
@@ -7,7 +9,7 @@ defmodule EfxExample do
     File.read(file)
   end
 
-  eff print(any) :: any
+  eff print(any) :: {&IO.puts/1}
   @spec print(any) :: any
   def print(sth) do
     IO.puts(sth)

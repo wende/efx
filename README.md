@@ -12,16 +12,19 @@ end
 
 # Defining own effects
 
-Now this is an effect and can be reasoned about on its own. It also is an alias to itself
-and all the underlying effects. What it means is that used like
-eff fun() :: {Example.print/0}
-Where Example.print() contains effects IO.puts and IO.read
-What is really represents is {Example.print/1, IO.puts/1, IO.read/1}
-And each and everyone of these effects can be captured independently
-
 ```elixir
 defeffect Example.print()
 ```
+
+Now this is an effect and can be reasoned about on its own. It also is an alias to itself
+and all the underlying effects. What it means is that used like
+
+`eff fun() :: {Example.print/0}`
+
+Where `Example.print()` contains effects `IO.puts/1` and `IO.read/1`
+What is really represents is `{Example.print/1, IO.puts/1, IO.read/1}`
+And each and everyone of these effects can be captured independently
+Think of effects as call to functions that are identified as effect-full
 
 # Capturing effects
 Effects can be captured using a dedicated syntax `handle do...catch...end`
@@ -108,9 +111,5 @@ end
 # Difficulties
 ## Inference of functions sent as messages
 Erlang's processes system allows to send an anonymous function as a regular value to the process via `Process.send/2`. This proves impossible to figure out effects of a function at compile time if it receives an effect-full function via message passing.
-
----
-## Inference of default errors such as MatchError and FunctionClauseError
-Errors that are by default possible to be thrown in every place in code cannot be expressed using Efx, because handling them would never clear off the effect completely.
 
 

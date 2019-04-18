@@ -1,60 +1,75 @@
 defmodule Efx do
   defstruct handlers: %{}, continuations: %{}
 
-  @base_effects [
-    {File, :read, 1}
-  ]
-
-  @spec register_effect(any(), any(), any()) :: :ok
-  def register_effect(mod, fun, arity) do
-    start()
-    Agent.update(Efx, fn state -> Map.put(state, {mod, fun, arity}, true) end)
-  end
-
-  @spec start() :: :ok
-  def start() do
-    case :ets.info(Efx) do
-      :undefined ->
-        Agent.start(
-          fn -> @base_effects |> Enum.map(fn a -> {a, true} end) |> Enum.into(%{}) end,
-          name: Efx
-        )
-
-        :ok
-
-      _ ->
-        :ok
+  defmacro __using__(_) do
+    quote do
+      import Efx.Definition, only: [eff: 1]
     end
   end
 
-  def replace_effects(ast) do
-    start()
+  @manifest_file Path.join(Mix.Project.manifest_path(), "effect_definitions.blob")
 
+  @spec read_manifest() :: {:error, atom()} | {:ok, list({atom, atom, integer})}
+  def read_manifest() do
+    @manifest_file
+    |> File.read()
+    |> case do
+      {:ok, content} -> {:ok, :erlang.binary_to_term(content)}
+      err -> err
+    end
+  end
+
+  @spec write_manifest(list({atom, atom, integer})) :: :ok | {:error, atom()}
+  def write_manifest(effects) do
+    @manifest_file |> File.write(:erlang.term_to_binary(effects))
+  end
+
+  def clean_manifest() do
+    @manifest_file |> File.rm()
+  end
+
+  @base_effects_file "./.efx"
+  def read_base_effects() do
+    case File.read(@base_effects_file) do
+      {:ok, content} ->
+        {effects, _} = Code.eval_string(content)
+        effects
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  def gather_effects(_ast) do
+    []
+  end
+
+  def replace_effects(ast, effects) do
     Macro.prewalk(ast, fn
       ast = {{:., _, [_module, _function]}, _, _args} ->
-        replace_call(ast)
+        replace_call(ast, effects)
 
       ast ->
         ast
     end)
   end
 
-  @spec replace_call(any()) :: any()
-  def replace_call(ast = {{:., _, [mod_ast, fun]}, _, args}) do
+  @spec replace_call(any(), effects :: list({atom, atom, integer})) :: any()
+  def replace_call(ast = {{:., _, [mod_ast, fun]}, _, args}, effects) do
     mod = replace_module(mod_ast)
 
-    case Agent.get(Efx, fn state -> state[{mod, fun, length(args)}] end) do
-      nil ->
-        ast
+    if Enum.member?(effects, {mod, fun, length(args)}) do
+      IO.inspect("Replacing #{inspect({mod, fun, length(args)})}")
 
-      true ->
-        quote do
-          Efx.eff(unquote(mod), unquote(fun), unquote(args))
-        end
+      quote do
+        Efx.eff(unquote(mod), unquote(fun), unquote(args))
+      end
+    else
+      ast
     end
   end
 
-  def replace_call(ast) do
+  def replace_call(ast, _effects) do
     ast
   end
 
@@ -74,36 +89,34 @@ defmodule Efx do
     |> Map.get({mod, fun, length(args)})
     |> case do
       nil ->
-        IO.puts("Not found")
         apply(mod, fun, args)
 
-      [{ref, handler} | rest] ->
-        IO.inspect({ref, handler})
-        Process.put(Efx, put_in(efx.handlers[{mod, fun, args}], rest))
-
-        handler.(args, fn result ->
-          Efx.put_continuation(ref, result)
+      handlers ->
+        handlers
+        |> Enum.reduce_while(:no_match, fn handler, _ ->
+          case handler.(args) do
+            {:ok, body} -> {:halt, body}
+            {:error, :no_match} -> {:cont, :no_match}
+          end
         end)
+        |> case do
+          :no_match -> throw(:no_match)
+          body -> body
+        end
     end
   end
 
   defmacro handle(do: code, catch: cases) do
     handlers =
-      for {:->, _, [[left, k], body]} <- cases do
+      for {:->, _, [[left], body]} <- cases do
         {mod, fun, args} = tuplify_call(left, __CALLER__)
 
         quote do
-          ref = Kernel.make_ref()
-
-          fn [unquote_splicing(args)], unquote(k) ->
-            unquote(body)
-
-            case Efx.get_continuation(ref) do
-              nil -> throw(:efx_no_cont)
-              result -> result
-            end
+          fn
+            [unquote_splicing(args)] -> {:ok, unquote(body)}
+            _ -> {:error, :no_match}
           end
-          |> Efx.put_handler({unquote(mod), unquote(fun), unquote(length(args))}, ref)
+          |> Efx.put_handler({unquote(mod), unquote(fun), unquote(length(args))})
         end
       end
 
@@ -113,11 +126,14 @@ defmodule Efx do
     end
   end
 
-  def put_handler(handler, modfunarity, ref) do
+  def put_handler(handler, modfunarity) do
     Efx.get()
     |> update_in(
       [Access.key(:handlers), modfunarity],
-      fn handlers -> [{ref, handler} | handlers] end
+      fn
+        nil -> [handler]
+        handlers -> [handler | handlers]
+      end
     )
     |> Efx.put()
   end
