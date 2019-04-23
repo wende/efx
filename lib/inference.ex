@@ -1,7 +1,11 @@
 defmodule Efx.Inference do
-  defp gather(ast) do
+  alias Efx.Definition
+  alias Efx.EffectSet
+
+  @spec infer(Definition.t(), EffectSet.effect()) :: EffectSet.t()
+  def infer(ast, effect) do
   end
 
-  defp cure(left, effect) do
+  def cure(left, effect) do
   end
 end

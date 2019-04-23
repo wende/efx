@@ -1,55 +1,71 @@
 defmodule Efx.Definition do
-  use GenServer
+  alias Efx.EffectSet
 
   defmodule Module do
-    @type t :: %Module{functions: %{optional({name :: atom(), arity :: tuple()}) => Set.t()}}
+    @type t :: %Module{
+            functions: %{
+              optional({name :: atom(), arity :: tuple()}) =>
+                {:resolved, Set.t()} | {:unresolved, term()}
+            }
+          }
     defstruct functions: %{}
   end
 
+  @type t :: %{modules: %{optional(atom) => Module.t()}}
   defstruct modules: %{}
 
-  def start(), do: GenServer.start(Module, name: __MODULE__)
-
-  def init(_) do
-    {:ok, %__MODULE__{}}
+  def new() do
+    %Efx.Definition{}
   end
 
-  def define_effects(module, fun, arity, effects) do
-    GenServer.cast(__MODULE__, {:define_effects, module, fun, arity, effects})
+  @spec get_effects(t(), atom(), atom(), integer()) :: EffectSet.t()
+  def get_effects(definition, mod, fun, arity) do
+    case definition.modules[mod] do
+      nil -> nil
+      mod -> mod[{fun, arity}]
+    end
   end
 
-  def handle_cast({:define_effects, mod, fun, arity, effects}, _, state) do
-    new_state =
-      case state.modules[mod] do
-        nil ->
-          put_in(state.modules[mod], %{{fun, arity} => effects})
+  @spec set_effects(t(), atom, atom(), integer(), EffectSet.t()) ::
+          {:error, <<_::32, _::_*8>>}
+          | {:ok, %{mod: %{optional({any(), any(), any()}) => any()}}}
+  def set_effects(definition, mod, fun, arity, effects) do
+    case definition.modules[mod] do
+      nil ->
+        {:ok,
+         %{
+           definition
+           | modules: Map.put(definition.modules, mod, %{{fun, arity} => effects})
+         }}
 
-        mod ->
-          case mod[{fun, arity}] do
-            nil ->
-              put_in(state.modules[mod][{fun, arity}], effects)
+      other ->
+        case other[{fun, arity}] do
+          nil ->
+            {:ok, %{definition | modules: put_in(definition.modules[mod][{fun, arity}], effects)}}
 
-            definition ->
-              conflict(definition, effects)
-              state
-          end
-      end
-
-    {:noreply, new_state}
+          already_defined ->
+            if EffectSet.equal?(already_defined, effects) do
+              {:ok, definition}
+            else
+              {:error, conflict(already_defined, effects)}
+            end
+        end
+    end
   end
 
   defp conflict(original, annotation) do
     # TODO do the conflic
+    "#{inspect(original)} != #{inspect(annotation)}"
   end
 
   defmacro eff({:::, _, [left, right]}) do
     {name, arity, args} = function_and_args_ast(left)
 
     effects =
-      effects_ast(right)
+      effects_ast(right, __CALLER__)
       |> resolve_free_vars(args)
 
-    define_effects(__CALLER__.module, name, arity, effects)
+    Efx.Definition.Server.define_effects(__CALLER__.module, name, arity, effects)
   end
 
   defp function_and_args_ast({name, _, args}) do
@@ -57,23 +73,22 @@ defmodule Efx.Definition do
   end
 
   # Two effects
-  defp effects_ast({effect1, effect2}) do
-    effects_set([effect1, effect2])
+  def effects_ast({effect1, effect2}, env) do
+    [eff_ast(effect1, env), eff_ast(effect2, env)] |> Efx.EffectSet.new()
   end
 
   # 1, 3 or more effects
-  defp effects_ast({:{}, _, args}) do
-    effects_set(args)
+  def effects_ast({:{}, _, args}, env) do
+    Enum.map(args, &eff_ast(&1, env)) |> Efx.EffectSet.new()
   end
 
-  defp effects_ast(ast) do
+  def effects_ast(ast, _env) do
     throw("Incorrect effects definition: #{Macro.to_string(ast)}")
   end
 
-  defp effects_set(effects) do
-    # TODO organize effects
-    effects
-    MapSet.new(effects)
+  @spec eff_ast({:&, any(), [{:/, any(), [...]}, ...]}, any()) :: {any(), any(), any()}
+  def eff_ast({:&, _, [{:/, _, [{{:., [], [mod, fun]}, _, []}, arity]}]}, env) do
+    {Macro.expand(mod, env), fun, arity}
   end
 
   defp resolve_free_vars(effects, vars) do
