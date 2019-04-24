@@ -1,11 +1,12 @@
 defmodule Efx.Inference do
   alias Efx.Definition
   alias Efx.EffectSet
+  require Logger
 
   @spec infer(Definition.t(), atom(), atom(), integer()) :: {EffectSet.t(), Definition.t()}
   def infer(definition, mod, fun, arity, stack \\ []) do
     nstack = [{mod, fun, arity} | stack]
-    IO.inspect("Infering #{mod}.#{fun}/#{inspect(arity)}")
+    Logger.debug("Infering #{mod}.#{fun}/#{inspect(arity)}")
 
     definition
     |> Definition.get(mod, fun, arity)
@@ -20,12 +21,18 @@ defmodule Efx.Inference do
         result =
           ast
           |> find_calls(mod)
+          |> Enum.uniq()
           |> Enum.reduce({EffectSet.new(), {:ok, definition}}, fn
             {mod, fun, arity}, {effs, {:ok, defs}} ->
-              {effects, definition} = infer(defs, mod, fun, arity, nstack)
+              if {mod, fun, arity} in stack do
+                # We've alreayd been here. Carry on
+                {effs, {:ok, defs}}
+              else
+                {effects, definition} = infer(defs, mod, fun, arity, nstack)
 
-              {EffectSet.merge(effs, effects),
-               Definition.set_effects(definition, mod, fun, arity, effects)}
+                {EffectSet.merge(effs, effects),
+                 Definition.set_effects(definition, mod, fun, arity, effects)}
+              end
           end)
 
         with {effs, {:ok, defs}} <- result,
