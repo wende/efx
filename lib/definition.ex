@@ -18,19 +18,40 @@ defmodule Efx.Definition do
     %Efx.Definition{}
   end
 
+  def prepare_ast(ast) do
+    Macro.prewalk(ast, &Macro.expand(&1, __ENV__))
+  end
+
   @spec get_effects(t(), atom(), atom(), integer()) :: EffectSet.t()
   def get_effects(definition, mod, fun, arity) do
-    case definition.modules[mod] do
+    case get(definition, mod, fun, arity) do
       nil -> nil
-      mod -> mod[{fun, arity}]
+      {:resolved, eff} -> eff
+      {:unresolved, _} -> nil
+    end
+  end
+
+  def get(definition, mod, fun, arity) do
+    case Map.get(definition.modules, mod) do
+      nil ->
+        nil
+
+      mod ->
+        mod[{fun, arity}]
     end
   end
 
   @spec set_effects(t(), atom, atom(), integer(), EffectSet.t()) ::
           {:error, <<_::32, _::_*8>>}
           | {:ok, %{mod: %{optional({any(), any(), any()}) => any()}}}
-  def set_effects(definition, mod, fun, arity, effects) do
-    case definition.modules[mod] do
+  def set_effects(definition, mod, fun, arity, effects),
+    do: set(definition, mod, fun, arity, {:resolved, effects})
+
+  def set_ast(definition, mod, fun, arity, ast),
+    do: set(definition, mod, fun, arity, {:unresolved, ast})
+
+  defp set(definition, mod, fun, arity, effects) do
+    case Map.get(definition.modules, mod) do
       nil ->
         {:ok,
          %{
@@ -41,10 +62,13 @@ defmodule Efx.Definition do
       other ->
         case other[{fun, arity}] do
           nil ->
-            {:ok, %{definition | modules: put_in(definition.modules[mod][{fun, arity}], effects)}}
+            {:ok, put_in(definition.modules[mod][{fun, arity}], effects)}
 
-          already_defined ->
-            if EffectSet.equal?(already_defined, effects) do
+          {:unresolved, _ast} ->
+            {:ok, put_in(definition.modules[mod][{fun, arity}], effects)}
+
+          {:resolved, already_defined} ->
+            if EffectSet.equal?(already_defined, elem(effects, 1)) do
               {:ok, definition}
             else
               {:error, conflict(already_defined, effects)}

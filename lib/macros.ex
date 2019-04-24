@@ -3,7 +3,8 @@ defmodule Efx.Macros do
     quote do
       case unquote(left) do
         {:error, e} = e -> e
-        {:ok, r} -> r |> unquote(right)
+        {:ok, exp} -> exp |> unquote(right)
+        other -> other |> unquote(right)
       end
     end
   end

@@ -14,7 +14,4 @@ defmodule EfxExample do
   def print(sth) do
     IO.puts(sth)
   end
-
-  eff map(list, f) :: [Mod.fun: 1]
-  def map(list, f)
 end

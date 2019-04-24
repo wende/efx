@@ -6,3 +6,6 @@ otp_release:
 
 script:
   - make test-all
+
+notifications:
+  email: false
