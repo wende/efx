@@ -2,33 +2,36 @@ defmodule Mix.Tasks.Compile.Efx do
   use Mix.Task
 
   def run(args) do
-    # Nasty trick to crash on errors
-    case Mix.Tasks.Compile.Elixir.run(args) do
-      {:ok, _} ->
-        project = Mix.Project.config()
-
-        ex_paths = project[:elixirc_paths]
-        deps_path = project[:deps_path]
-
-        unless is_list(ex_paths) do
-          Mix.raise(":elixirc_paths should be a list of paths, got: #{inspect(ex_paths)}")
-        end
-
-        Efx.clean_manifest()
-
-        for path <- [deps_path | ex_paths] do
-          path
-          |> Path.join("**/**/*.ex")
-          |> Path.wildcard()
-        end
-        |> List.flatten()
-        |> process_files()
-
-        :ok
-
-      err ->
-        err
+    with :ok <- compile(),
+         {:ok, _} <- Mix.Tasks.Compile.Elixir.run(args),
+         :ok <- Mix.Tasks.Compile.PostEfx.run(args) do
+      :ok
+    else
+      err -> err
     end
+  end
+
+  def compile() do
+    project = Mix.Project.config()
+
+    ex_paths = project[:elixirc_paths]
+
+    unless is_list(ex_paths) do
+      Mix.raise(":elixirc_paths should be a list of paths, got: #{inspect(ex_paths)}")
+    end
+
+    Efx.clean_manifest()
+
+    for path <- ex_paths do
+      path
+      |> Path.join("**/**/*.ex")
+      |> Path.wildcard()
+    end
+    |> List.flatten()
+    |> Enum.uniq()
+    |> process_files()
+
+    :ok
   end
 
   def clean() do

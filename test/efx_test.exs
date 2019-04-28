@@ -1,7 +1,10 @@
 defmodule EfxTest do
   alias Efx.Definition
   alias Efx.EffectSet
+
   import Efx.Macros
+  import Efx
+
   use ExUnit.Case
   doctest Efx
 

@@ -4,6 +4,18 @@ defmodule EfxExampleTest do
 
   import Efx
 
+  describe "Effects in dependencies" do
+    handle do
+      HTTPoison.get("google.com")
+    catch
+      :hackney.body(ref, _) -> {:ok, "BODY"}
+    end
+    |> case do
+      {:ok, %HTTPoison.Response{body: body}} -> assert body == "BODY"
+      other -> flunk("Unexpected response #{inspect(other)}")
+    end
+  end
+
   test "Captures simple effect" do
     result =
       handle do

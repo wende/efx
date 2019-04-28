@@ -71,15 +71,17 @@ defmodule Efx.Definition do
             if EffectSet.equal?(already_defined, elem(effects, 1)) do
               {:ok, definition}
             else
-              {:error, conflict(already_defined, effects)}
+              {:error, conflict({mod, fun, arity}, already_defined, effects)}
             end
         end
     end
   end
 
-  defp conflict(original, annotation) do
+  defp conflict({mod, fun, arity}, original, {:resolved, annotation}) do
     # TODO do the conflic
-    "#{inspect(original)} != #{inspect(annotation)}"
+    "Effects for #{mod}.#{fun}/#{arity} are already set to #{inspect(original)}. And #{
+      inspect(annotation)
+    } differs from prior definition"
   end
 
   defmacro eff({:::, _, [left, right]}) do
@@ -111,7 +113,7 @@ defmodule Efx.Definition do
   end
 
   @spec eff_ast({:&, any(), [{:/, any(), [...]}, ...]}, any()) :: {any(), any(), any()}
-  def eff_ast({:&, _, [{:/, _, [{{:., [], [mod, fun]}, _, []}, arity]}]}, env) do
+  def eff_ast({:&, _, [{:/, _, [{{:., _, [mod, fun]}, _, []}, arity]}]}, env) do
     {Macro.expand(mod, env), fun, arity}
   end
 

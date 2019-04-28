@@ -9,5 +9,6 @@
   {IO, :write, 2},
   {IO, :read, 1},
   {IO, :read, 2},
-  {Kernel, :send, 2}
+  {Kernel, :send, 2},
+  {:hackney, :body, 2}
 ]

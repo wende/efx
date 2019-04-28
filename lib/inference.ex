@@ -44,12 +44,14 @@ defmodule Efx.Inference do
     end
   end
 
+  def find_calls({left, right}, m), do: find_calls(left, m) ++ find_calls(right, m)
+
   def find_calls({:__block__, _, [line | lines]}, m) do
     find_calls(line, m) ++ find_calls(lines, m)
   end
 
   # Dot dynamic call mod.fun(args...)
-  def find_calls({{:., _, [{_var, _, Elixir}, _fun]}, _, args}, m) do
+  def find_calls({{:., _, [{_var, _, context}, _fun]}, _, args}, m) when is_atom(context) do
     [:dynamic] ++ find_calls(args, m)
   end
 
@@ -59,17 +61,25 @@ defmodule Efx.Inference do
   end
 
   # Local or imported call
-  def find_calls({fun, meta, args}, mod) do
+  def find_calls({fun, meta, args}, mod) when is_list(args) do
     case meta[:import] do
       nil -> [{mod, fun, length(args)}] ++ find_calls(args, mod)
       import_module -> [{import_module, fun, length(args)}] ++ find_calls(args, mod)
     end
   end
 
+  # Variables
+  def find_calls({name, _, context}, m) when is_atom(context) and is_atom(name) do
+    []
+  end
+
   def find_calls([h | t], m), do: find_calls(h, m) ++ find_calls(t, m)
   def find_calls([], _), do: []
 
-  def find_calls(x, _) when is_integer(x), do: []
+  # Basics
+  def find_calls(x, _) when is_number(x), do: []
+  def find_calls(x, _) when is_binary(x), do: []
+  def find_calls(x, _) when is_atom(x), do: []
 
   def find_calls({}, _) do
     []

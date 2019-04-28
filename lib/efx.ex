@@ -7,6 +7,14 @@ defmodule Efx do
     end
   end
 
+  defmacro defwitheff(definition, body) do
+    IO.inspect("Defining #{inspect(definition)}")
+
+    quote do
+      def(unquote(definition), unquote(body))
+    end
+  end
+
   @manifest_file Path.join(Mix.Project.manifest_path(), "effect_definitions.blob")
 
   @spec read_manifest() :: {:error, atom()} | {:ok, list({atom, atom, integer})}
@@ -45,9 +53,17 @@ defmodule Efx do
   end
 
   def replace_effects(ast, effects) do
-    Macro.prewalk(ast, fn
+    Macro.postwalk(ast, fn
       ast = {{:., _, [_module, _function]}, _, _args} ->
         replace_call(ast, effects)
+
+      {:def, m, definition} ->
+        IO.write(".")
+
+        quote do
+          import Efx
+          unquote({:defwitheff, m, definition})
+        end
 
       ast ->
         ast
@@ -59,7 +75,7 @@ defmodule Efx do
     mod = replace_module(mod_ast)
 
     if Enum.member?(effects, {mod, fun, length(args)}) do
-      IO.inspect("Replacing #{inspect({mod, fun, length(args)})}")
+      IO.inspect("Replacing #{inspect({mod, fun, args})}")
 
       quote do
         Efx.eff(unquote(mod), unquote(fun), unquote(args))
@@ -79,10 +95,12 @@ defmodule Efx do
   end
 
   def replace_module(atom_module) when is_atom(atom_module), do: atom_module
+  # When module is a variable
+  def replace_module(var = {_, _, _}), do: var
 
   @spec eff(any(), any(), [any()]) :: any()
   def eff(mod, fun, args) do
-    IO.puts("Calling #{mod} #{fun} #{inspect(args)} at #{Efx}")
+    IO.puts("Calling #{mod} #{fun} #{inspect(args)} on #{inspect(self())}")
 
     efx = Efx.get()
 
