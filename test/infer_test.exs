@@ -44,10 +44,6 @@ defmodule InferTest do
       assert effects == EffectSet.new([{IO, :inspect, 1}])
     end
 
-    test "No effect yields nil" do
-      assert nil == Definition.new() |> Definition.get_effects(Mod, :fun, 1)
-    end
-
     test "handle block cures effects" do
       ast =
         quote do

@@ -11,7 +11,7 @@ defmodule Efx.Definition do
     defstruct functions: %{}
   end
 
-  @type t :: %{modules: %{optional(atom) => Module.t()}}
+  @type t :: %Efx.Definition{modules: %{optional(atom) => Module.t()}}
   defstruct modules: %{}
 
   def new() do
@@ -25,7 +25,7 @@ defmodule Efx.Definition do
   @spec get_effects(t(), atom(), atom(), integer()) :: EffectSet.t()
   def get_effects(definition, mod, fun, arity) do
     case get(definition, mod, fun, arity) do
-      nil -> nil
+      nil -> EffectSet.new()
       {:resolved, eff} -> eff
       {:unresolved, _} -> nil
     end
@@ -50,28 +50,34 @@ defmodule Efx.Definition do
   def set_ast(definition, mod, fun, arity, ast),
     do: set(definition, mod, fun, arity, {:unresolved, ast})
 
-  defp set(definition, mod, fun, arity, effects) do
+  defp set(definition, mod, fun, arity, value) do
     case Map.get(definition.modules, mod) do
       nil ->
         {:ok,
          %{
            definition
-           | modules: Map.put(definition.modules, mod, %{{fun, arity} => effects})
+           | modules: Map.put(definition.modules, mod, %{{fun, arity} => value})
          }}
 
       other ->
-        case other[{fun, arity}] do
-          nil ->
-            {:ok, put_in(definition.modules[mod][{fun, arity}], effects)}
+        case {other[{fun, arity}], value} do
+          {nil, {:resolved, effects}} when is_map(effects) ->
+            {:ok, put_in(definition.modules[mod][{fun, arity}], value)}
 
-          {:unresolved, _ast} ->
-            {:ok, put_in(definition.modules[mod][{fun, arity}], effects)}
+          {nil, {:unresolved, ast}} ->
+            {:ok, put_in(definition.modules[mod][{fun, arity}], {:unresolved, [ast]})}
 
-          {:resolved, already_defined} ->
-            if EffectSet.equal?(already_defined, elem(effects, 1)) do
+          {{:unresolved, _ast}, {:resolved, _}} ->
+            {:ok, put_in(definition.modules[mod][{fun, arity}], value)}
+
+          {{:unresolved, ast}, {:unresolved, new_ast}} ->
+            {:ok, put_in(definition.modules[mod][{fun, arity}], {:unresolved, [new_ast | ast]})}
+
+          {{:resolved, already_defined}, _} ->
+            if EffectSet.equal?(already_defined, elem(value, 1)) do
               {:ok, definition}
             else
-              {:error, conflict({mod, fun, arity}, already_defined, effects)}
+              {:error, conflict({mod, fun, arity}, already_defined, value)}
             end
         end
     end
@@ -82,42 +88,5 @@ defmodule Efx.Definition do
     "Effects for #{mod}.#{fun}/#{arity} are already set to #{inspect(original)}. And #{
       inspect(annotation)
     } differs from prior definition"
-  end
-
-  defmacro eff({:::, _, [left, right]}) do
-    {name, arity, args} = function_and_args_ast(left)
-
-    effects =
-      effects_ast(right, __CALLER__)
-      |> resolve_free_vars(args)
-
-    Efx.Definition.Server.define_effects(__CALLER__.module, name, arity, effects)
-  end
-
-  defp function_and_args_ast({name, _, args}) do
-    {name, length(args), args}
-  end
-
-  # Two effects
-  def effects_ast({effect1, effect2}, env) do
-    [eff_ast(effect1, env), eff_ast(effect2, env)] |> Efx.EffectSet.new()
-  end
-
-  # 1, 3 or more effects
-  def effects_ast({:{}, _, args}, env) do
-    Enum.map(args, &eff_ast(&1, env)) |> Efx.EffectSet.new()
-  end
-
-  def effects_ast(ast, _env) do
-    throw("Incorrect effects definition: #{Macro.to_string(ast)}")
-  end
-
-  @spec eff_ast({:&, any(), [{:/, any(), [...]}, ...]}, any()) :: {any(), any(), any()}
-  def eff_ast({:&, _, [{:/, _, [{{:., _, [mod, fun]}, _, []}, arity]}]}, env) do
-    {Macro.expand(mod, env), fun, arity}
-  end
-
-  defp resolve_free_vars(effects, vars) do
-    # TODO
   end
 end

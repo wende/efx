@@ -2,6 +2,8 @@ defmodule Mix.Tasks.Compile.Efx do
   use Mix.Task
 
   def run(args) do
+    {:ok, _} = Efx.Definition.Server.start()
+
     with :ok <- compile(),
          {:ok, _} <- Mix.Tasks.Compile.Elixir.run(args),
          :ok <- Mix.Tasks.Compile.PostEfx.run(args) do
@@ -9,6 +11,8 @@ defmodule Mix.Tasks.Compile.Efx do
     else
       err -> err
     end
+
+    IO.puts("Compilation end")
   end
 
   def compile() do

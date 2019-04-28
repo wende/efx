@@ -6,7 +6,7 @@ defmodule Efx.Inference do
   @spec infer(Definition.t(), atom(), atom(), integer()) :: {EffectSet.t(), Definition.t()}
   def infer(definition, mod, fun, arity, stack \\ []) do
     nstack = [{mod, fun, arity} | stack]
-    Logger.debug("Infering #{mod}.#{fun}/#{inspect(arity)}")
+    IO.puts("Infering #{mod}.#{fun}/#{inspect(arity)}")
 
     definition
     |> Definition.get(mod, fun, arity)

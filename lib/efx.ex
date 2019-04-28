@@ -3,16 +3,41 @@ defmodule Efx do
 
   defmacro __using__(_) do
     quote do
-      import Efx.Definition, only: [eff: 1]
+      import Efx, only: [eff: 1]
     end
   end
 
-  defmacro defwitheff(definition, body) do
-    IO.inspect("Defining #{inspect(definition)}")
+  defmacro defwitheff({name, _, args} = definition, body) when is_list(args) do
+    IO.puts("Defining #{inspect(definition)}")
+    mod = __CALLER__.module
+
+    :ok = Efx.Definition.Server.define_ast(mod, name, length(args), body)
 
     quote do
       def(unquote(definition), unquote(body))
     end
+  end
+
+  defmacro defwitheff({name, _, context} = definition, body) when is_atom(context) do
+    IO.puts("Defining #{inspect(definition)}")
+    mod = __CALLER__.module
+
+    :ok = Efx.Definition.Server.define_ast(mod, name, 0, body)
+
+    quote do
+      def(unquote(definition), unquote(body))
+    end
+  end
+
+  defmacro eff({:::, _, [left, right]}) do
+    {name, arity, args} = function_and_args_ast(left)
+
+    effects =
+      effects_ast(right, __CALLER__)
+      |> resolve_free_vars(args)
+
+    Efx.Definition.Server.infer(__CALLER__.module, name, arity)
+    Efx.Definition.Server.define_effects(__CALLER__.module, name, arity, effects)
   end
 
   @manifest_file Path.join(Mix.Project.manifest_path(), "effect_definitions.blob")
@@ -58,8 +83,6 @@ defmodule Efx do
         replace_call(ast, effects)
 
       {:def, m, definition} ->
-        IO.write(".")
-
         quote do
           import Efx
           unquote({:defwitheff, m, definition})
@@ -75,10 +98,10 @@ defmodule Efx do
     mod = replace_module(mod_ast)
 
     if Enum.member?(effects, {mod, fun, length(args)}) do
-      IO.inspect("Replacing #{inspect({mod, fun, args})}")
+      IO.inspect("Replacing call to eff #{inspect({mod, fun, args})}")
 
       quote do
-        Efx.eff(unquote(mod), unquote(fun), unquote(args))
+        Efx.call_effect(unquote(mod), unquote(fun), unquote(args))
       end
     else
       ast
@@ -98,8 +121,8 @@ defmodule Efx do
   # When module is a variable
   def replace_module(var = {_, _, _}), do: var
 
-  @spec eff(any(), any(), [any()]) :: any()
-  def eff(mod, fun, args) do
+  @spec call_effect(any(), any(), [any()]) :: any()
+  def call_effect(mod, fun, args) do
     IO.puts("Calling #{mod} #{fun} #{inspect(args)} on #{inspect(self())}")
 
     efx = Efx.get()
@@ -183,5 +206,33 @@ defmodule Efx do
 
   defp tuplify_call({:{}, _, [mod, fun, args]}, _) do
     {mod, fun, args}
+  end
+
+  defp function_and_args_ast({name, _, args}) do
+    {name, length(args), args}
+  end
+
+  # Two effects
+  def effects_ast({effect1, effect2}, env) do
+    [eff_ast(effect1, env), eff_ast(effect2, env)] |> Efx.EffectSet.new()
+  end
+
+  # 1, 3 or more effects
+  def effects_ast({:{}, _, args}, env) do
+    Enum.map(args, &eff_ast(&1, env)) |> Efx.EffectSet.new()
+  end
+
+  def effects_ast(ast, _env) do
+    throw("Incorrect effects definition: #{Macro.to_string(ast)}")
+  end
+
+  @spec eff_ast({:&, any(), [{:/, any(), [...]}, ...]}, any()) :: {any(), any(), any()}
+  def eff_ast({:&, _, [{:/, _, [{{:., _, [mod, fun]}, _, []}, arity]}]}, env) do
+    {Macro.expand(mod, env), fun, arity}
+  end
+
+  defp resolve_free_vars(effects, _vars) do
+    # TODO Resolve free vars
+    effects
   end
 end

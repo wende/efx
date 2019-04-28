@@ -19,7 +19,7 @@ defmodule EfxExample do
     insert_puts()
   end
 
-  eff print(any) :: {&IO.puts/1}
+  eff print(any) :: {}
   @spec print(any) :: any
   def print(sth) do
     IO.puts(sth)

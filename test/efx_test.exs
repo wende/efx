@@ -71,8 +71,8 @@ defmodule EfxTest do
       assert {:error, _} = conflict
     end
 
-    test "No effect yields nil" do
-      assert nil == Definition.new() |> Definition.get_effects(Mod, :fun, 1)
+    test "No effect defined means pure" do
+      assert EffectSet.new() == Definition.new() |> Definition.get_effects(Mod, :fun, 1)
     end
   end
 end
